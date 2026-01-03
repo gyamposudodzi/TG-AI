@@ -1,0 +1,13 @@
+# requirements.txt
+streamlit==1.28.0
+pandas==2.1.3
+numpy==1.24.3
+plotly==5.17.0
+python-dotenv==1.0.0
+openai==1.3.0
+langchain==0.0.350
+llama-index==0.9.0
+pymongo==4.5.0  # Optional for MongoDB
+reportlab==4.0.4  # For PDF reports
+fpdf2==2.7.5  # Alternative for PDF
+markdown==3.5.1
