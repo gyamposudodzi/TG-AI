@@ -8,6 +8,9 @@ import os
 
 # Add core directory to Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'core'))
+from metrics_calculator import TradeMetricsCalculator
+from risk_scorer import RiskScorer
+from risk_rules import RiskRuleEngine
 
 # Set page config
 st.set_page_config(
@@ -137,12 +140,12 @@ if page == "📊 Upload & Analyze":
         st.markdown("### 📋 CSV Template")
         st.download_button(
             label="Download Sample CSV",
-            data=""trade_id,symbol,entry_time,exit_time,trade_type,lot_size,entry_price,exit_price,stop_loss,take_profit,profit_loss,account_balance_before
-1,EURUSD,2024-01-01 10:00:00,2024-01-01 12:00:00,BUY,0.1,1.1000,1.1020,1.0980,1.1050,20.00,10000
-2,GBPUSD,2024-01-02 09:30:00,2024-01-02 10:30:00,SELL,0.2,1.2700,1.2680,1.2750,1.2650,40.00,10020
-3,BTCUSD,2024-01-03 15:00:00,2024-01-03 16:00:00,BUY,0.01,42000,42500,41000,43000,50.00,10060
-4,TSLA,2024-01-04 11:00:00,2024-01-04 14:00:00,SELL,5,250,245,255,240,-25.00,10110
-5,XAUUSD,2024-01-05 08:00:00,2024-01-05 09:00:00,BUY,0.05,2020,2030,2010,2040,10.00,10085"",
+            data="""trade_id,symbol,entry_time,exit_time,trade_type,lot_size,entry_price,exit_price,stop_loss,take_profit,profit_loss,account_balance_before
+            1,EURUSD,2024-01-01 10:00:00,2024-01-01 12:00:00,BUY,0.1,1.1000,1.1020,1.0980,1.1050,20.00,10000
+            2,GBPUSD,2024-01-02 09:30:00,2024-01-02 10:30:00,SELL,0.2,1.2700,1.2680,1.2750,1.2650,40.00,10020
+            3,BTCUSD,2024-01-03 15:00:00,2024-01-03 16:00:00,BUY,0.01,42000,42500,41000,43000,50.00,10060
+            4,TSLA,2024-01-04 11:00:00,2024-01-04 14:00:00,SELL,5,250,245,255,240,-25.00,10110
+            5,XAUUSD,2024-01-05 08:00:00,2024-01-05 09:00:00,BUY,0.05,2020,2030,2010,2040,10.00,10085""",
             file_name="sample_trades.csv",
             mime="text/csv"
         )
@@ -163,92 +166,217 @@ elif page == "📈 Risk Dashboard":
         st.warning("Please upload trade data first from the 'Upload & Analyze' page.")
         st.stop()
     
-    # Placeholder for actual analysis
     df = st.session_state['trade_data']
     
-    # Mock analysis for now (we'll replace with real analysis later)
-    st.info("🔧 **Risk analysis engine is being initialized...**")
+    # Show analysis progress
+    with st.spinner("🔍 Analyzing your trading patterns..."):
+        
+        # 1. Calculate Metrics
+        metrics_calc = TradeMetricsCalculator(df)
+        metrics = metrics_calc.compute_all_metrics()
+        
+        # 2. Detect Risks
+        risk_engine = RiskRuleEngine(metrics, df)
+        risk_results = risk_engine.detect_all_risks()
+        
+        # 3. Calculate Score
+        scorer = RiskScorer()
+        score_result = scorer.calculate_score(risk_results['risk_details'])
+        
+        # Store in session state
+        st.session_state['metrics'] = metrics
+        st.session_state['risk_results'] = risk_results
+        st.session_state['score_result'] = score_result
     
-    # Create columns for metrics
-    col1, col2, col3, col4 = st.columns(4)
+    # Display Score Gauge
+    col1, col2 = st.columns([2, 1])
     
     with col1:
-        st.metric("Risk Score", "72", delta="Moderate Risk", delta_color="off")
+        # Create gauge chart
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number+delta",
+            value=score_result['score'],
+            domain={'x': [0, 1], 'y': [0, 1]},
+            title={'text': "Risk Score", 'font': {'size': 24}},
+            delta={'reference': 80, 'increasing': {'color': "RebeccaPurple"}},
+            gauge={
+                'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+                'bar': {'color': score_result['grade_color']},
+                'bgcolor': "white",
+                'borderwidth': 2,
+                'bordercolor': "gray",
+                'steps': [
+                    {'range': [0, 40], 'color': '#ef4444'},
+                    {'range': [40, 60], 'color': '#f59e0b'},
+                    {'range': [60, 80], 'color': '#fbbf24'},
+                    {'range': [80, 100], 'color': '#10b981'}
+                ],
+                'threshold': {
+                    'line': {'color': "red", 'width': 4},
+                    'thickness': 0.75,
+                    'value': 80
+                }
+            }
+        ))
         
+        fig.update_layout(height=300)
+        st.plotly_chart(fig, use_container_width=True)
+    
     with col2:
-        st.metric("Grade", "B", delta="Good", delta_color="normal")
-        
-    with col3:
-        st.metric("Total Risks Detected", "3")
-        
-    with col4:
-        st.metric("Improvement Potential", "28%")
-    
-    st.divider()
-    
-    # Risk categories
-    st.subheader("📊 Risk Breakdown")
-    
-    risk_col1, risk_col2, risk_col3, risk_col4 = st.columns(4)
-    
-    with risk_col1:
-        st.markdown("""
-        <div class="risk-card risk-high">
-            <h4>🚨 High Risk</h4>
-            <h2>Over-Leverage</h2>
-            <p>Position sizes exceed 2% of account</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with risk_col2:
-        st.markdown("""
-        <div class="risk-card risk-medium">
-            <h4>⚠️ Medium Risk</h4>
-            <h2>No Stop Loss</h2>
-            <p>30% of trades had no SL</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with risk_col3:
-        st.markdown("""
-        <div class="risk-card risk-low">
-            <h4>✅ Low Risk</h4>
-            <h2>Revenge Trading</h2>
-            <p>Good emotional control</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with risk_col4:
-        st.markdown("""
-        <div class="risk-card risk-medium">
-            <h4>⚠️ Medium Risk</h4>
-            <h2>Poor R:R Ratio</h2>
-            <p>Avg 1:0.8 risk:reward</p>
+        # Display grade and key metrics
+        st.markdown(f"""
+        <div class="score-gauge">
+            <h1 style="font-size: 4rem; margin: 0;">{score_result['grade']}</h1>
+            <p style="font-size: 1.2rem; margin: 0;">Grade</p>
+            <div style="margin-top: 1rem;">
+                <p style="margin: 0.2rem;">Improvement: {score_result['improvement_potential']}%</p>
+                <p style="margin: 0.2rem;">Risks: {score_result['total_risks']}</p>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     
     st.divider()
     
-    # Placeholder for AI insights
-    st.subheader("🤖 AI Risk Insights")
-    with st.expander("View detailed analysis", expanded=True):
-        st.info("""
-        **Analysis of your trading patterns:**
+    # Display Metrics
+    st.subheader("📊 Trading Metrics")
+    
+    metrics_col1, metrics_col2, metrics_col3, metrics_col4 = st.columns(4)
+    
+    with metrics_col1:
+        st.metric("Win Rate", f"{metrics.get('win_rate', 0):.1f}%")
+        st.metric("Total Trades", metrics.get('total_trades', 0))
+    
+    with metrics_col2:
+        st.metric("Profit Factor", f"{metrics.get('profit_factor', 0):.2f}")
+        st.metric("Net Profit", f"${metrics.get('net_profit', 0):.2f}")
+    
+    with metrics_col3:
+        st.metric("Avg Position Size", f"{metrics.get('avg_position_size_pct', 0):.1f}%")
+        st.metric("Max Drawdown", f"{metrics.get('max_drawdown_pct', 0):.1f}%")
+    
+    with metrics_col4:
+        st.metric("Risk:Reward Ratio", f"{metrics.get('risk_reward_ratio', 0):.2f}")
+        st.metric("SL Usage Rate", f"{metrics.get('sl_usage_rate', 0):.1f}%")
+    
+    st.divider()
+    
+    # Display Detected Risks
+    st.subheader("🚨 Detected Risks")
+    
+    if not risk_results['detected_risks']:
+        st.success("✅ No significant risks detected! Your trading shows good risk management.")
+    else:
+        # Create columns for risk cards
+        risk_cols = st.columns(2)
         
-        1. **Over-Leverage Detected**: Your average position size is 3.2% of account balance, 
-           exceeding the recommended 2% limit. This increases margin call risk during volatility.
+        for idx, risk in enumerate(risk_results['detected_risks']):
+            details = risk_results['risk_details'].get(risk, {})
+            severity = details.get('severity', 0)
+            message = details.get('message', risk.replace('_', ' ').title())
+            
+            # Determine risk level
+            if severity >= 70:
+                risk_level = "High"
+                border_color = "#ef4444"
+            elif severity >= 40:
+                risk_level = "Medium"
+                border_color = "#f59e0b"
+            else:
+                risk_level = "Low"
+                border_color = "#10b981"
+            
+            with risk_cols[idx % 2]:
+                st.markdown(f"""
+                <div style="
+                    padding: 1rem;
+                    border-radius: 10px;
+                    background: #f8fafc;
+                    border-left: 5px solid {border_color};
+                    margin-bottom: 1rem;
+                ">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 style="margin: 0; color: {border_color};">{risk.replace('_', ' ').title()}</h4>
+                        <span style="background: {border_color}; color: white; padding: 0.2rem 0.5rem; border-radius: 10px; font-size: 0.8rem;">
+                            {risk_level}
+                        </span>
+                    </div>
+                    <p style="margin: 0.5rem 0;">{message}</p>
+                    <div style="display: flex; justify-content: space-between; font-size: 0.9rem; color: #64748b;">
+                        <span>Severity: {severity:.0f}%</span>
+                        <span>Weight: {scorer.risk_weights.get(risk, 0)}</span>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Display Detailed Analysis
+    st.subheader("📋 Detailed Analysis")
+    
+    tab1, tab2, tab3 = st.tabs(["Score Breakdown", "Risk Summary", "Recommendations"])
+    
+    with tab1:
+        st.write("**Score Calculation Breakdown:**")
         
-        2. **Stop-Loss Discipline**: 30% of trades were entered without stop-loss orders.
-           This exposes you to unlimited downside risk on those positions.
+        if score_result['breakdown']:
+            breakdown_df = pd.DataFrame(score_result['breakdown'])
+            breakdown_df['Risk'] = breakdown_df['risk'].apply(lambda x: x.replace('_', ' ').title())
+            breakdown_df['Impact'] = breakdown_df['contribution'].apply(lambda x: f"-{x:.1f}")
+            
+            st.dataframe(
+                breakdown_df[['Risk', 'severity', 'weight', 'Impact']].rename(
+                    columns={'severity': 'Severity %', 'weight': 'Weight'}
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
+        else:
+            st.info("No risk contributions to display.")
+    
+    with tab2:
+        st.markdown(risk_engine.get_risk_summary())
         
-        3. **Risk-Reward Ratio**: Your average risk:reward ratio is 1:0.8, meaning you're 
-           risking $1 to make $0.80. Successful traders typically aim for 1:1.5 or better.
+        # Show risk distribution
+        if score_result['risk_breakdown']:
+            fig = go.Figure(data=[
+                go.Pie(
+                    labels=list(score_result['risk_breakdown'].keys()),
+                    values=list(score_result['risk_breakdown'].values()),
+                    hole=.3,
+                    marker_colors=['#10b981', '#f59e0b', '#ef4444']
+                )
+            ])
+            fig.update_layout(title="Risk Distribution by Severity")
+            st.plotly_chart(fig, use_container_width=True)
+    
+    with tab3:
+        st.write("**Recommendations:**")
+        st.info(score_result['recommendation'])
         
-        **Non-Advisory Suggestions**:
-        - Consider using smaller position sizes relative to your account balance
-        - Set stop-loss orders on every trade entry
-        - Review your profit targets to improve risk:reward ratio
-        """)
+        # Show improvement plan
+        if score_result['top_risks']:
+            st.write("**Priority Areas for Improvement:**")
+            for i, risk in enumerate(score_result['top_risks'], 1):
+                risk_details = risk_results['risk_details'].get(risk, {})
+                st.markdown(f"""
+                {i}. **{risk.replace('_', ' ').title()}**  
+                   {risk_details.get('message', '')}
+                """)
+        
+        # What-if analysis
+        st.divider()
+        st.write("**Improvement Simulation:**")
+        
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("📈 Simulate 20% Improvement", use_container_width=True):
+                new_score = min(100, score_result['score'] + 20)
+                st.success(f"Improved score: {new_score:.1f}/100")
+        
+        with col_b:
+            if st.button("📉 View Worst-Case", use_container_width=True):
+                worst_score = max(0, score_result['score'] - 30)
+                st.error(f"Worst-case score: {worst_score:.1f}/100")
 
 elif page == "📋 Report":
     st.header("Generate Risk Report")
