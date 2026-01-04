@@ -68,7 +68,7 @@ It does NOT provide trading advice, predictions, or signals. Trading involves ri
 with st.sidebar:
     st.image("https://deriv.com/static/logo.svg", width=150)
     st.title("Navigation")
-    page = st.radio("Go to:", ["📊 Upload & Analyze", "📈 Risk Dashboard", "📋 Report", "⚙️ Settings"])
+    page = st.radio("Go to:", ["📊 Home", "📈 Risk Dashboard", "📋 Report", "⚙️ Settings"])
     
     st.divider()
     st.markdown("### Sample Data")
@@ -84,7 +84,7 @@ with st.sidebar:
     """)
 
 # Main content based on selected page
-if page == "📊 Upload & Analyze":
+if page == "📊 Home":
     st.header("Upload Your Trade History")
     
     col1, col2 = st.columns([2, 1])
@@ -157,14 +157,14 @@ if page == "📊 Upload & Analyze":
         1. Download sample CSV
         2. Upload it here
         3. Click 'Analyze Risk Profile'
-        4. View your risk score & insights
+        4. View your risk score & insights in the risk dashboard
         """)
 
 elif page == "📈 Risk Dashboard":
     st.header("Risk Analysis Dashboard")
     
     if 'trade_data' not in st.session_state:
-        st.warning("Please upload trade data first from the 'Upload & Analyze' page.")
+        st.warning("Please upload trade data first from the 'Home' page.")
         st.stop()
     
     df = st.session_state['trade_data']
