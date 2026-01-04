@@ -471,48 +471,80 @@ elif page == "📋 Report":
         
         if st.button("📄 Generate Full Report", type="primary", use_container_width=True):
             with st.spinner("Generating comprehensive risk report..."):
-                # Placeholder for report generation
-                st.success("✅ Report generated successfully!")
+                from core.report_generator import ReportGenerator
                 
-                # Mock report content
-                report_content = f"""
-                # TradeGuard AI Risk Health Report
-                ## Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+                # Generate report
+                generator = ReportGenerator()
                 
-                ### Executive Summary
-                - **Overall Risk Score**: 72/100 (Grade: B)
-                - **Key Risks**: Over-leverage, Missing stop-loss orders
-                - **Strengths**: Good trade timing, No revenge trading detected
+                if report_type in ["Markdown Report", "HTML Report"]:
+                    # Get all data from session state
+                    metrics = st.session_state.get('metrics', {})
+                    risk_results = st.session_state.get('risk_results', {})
+                    score_result = st.session_state.get('score_result', {})
+                    ai_explanations = st.session_state.get('ai_explanations', {})
+                    
+                    # Generate markdown report
+                    markdown_report = generator.generate_markdown_report(
+                        metrics, risk_results, score_result, ai_explanations
+                    )
+                    
+                    if report_type == "Markdown Report":
+                        st.success("✅ Markdown report generated successfully!")
+                        
+                        # Show preview
+                        with st.expander("📝 Report Preview", expanded=True):
+                            st.markdown(markdown_report[:2000] + "\n\n**... [report continues] ...**")
+                        
+                        # Download button
+                        st.download_button(
+                            label="⬇️ Download Markdown Report",
+                            data=markdown_report,
+                            file_name=f"{report_name}.md",
+                            mime="text/markdown"
+                        )
+                    
+                    else:  # HTML Report
+                        html_report = generator.generate_html_report(markdown_report)
+                        st.success("✅ HTML report generated successfully!")
+                        
+                        # Show preview
+                        with st.expander("🌐 Report Preview", expanded=True):
+                            st.components.v1.html(html_report, height=600, scrolling=True)
+                        
+                        # Download button
+                        st.download_button(
+                            label="⬇️ Download HTML Report",
+                            data=html_report,
+                            file_name=f"{report_name}.html",
+                            mime="text/html"
+                        )
                 
-                ### Risk Breakdown
-                1. Position Sizing: High Risk
-                2. Stop-Loss Usage: Medium Risk  
-                3. Risk-Reward Ratio: Medium Risk
-                4. Emotional Control: Low Risk
-                
-                ### AI Analysis
-                The analysis indicates a disciplined trader with room for improvement in position sizing and risk management practices.
-                
-                ### Disclaimer
-                This report is for educational purposes only. Not financial advice.
-                """
-                
-                st.download_button(
-                    label="⬇️ Download Report",
-                    data=report_content,
-                    file_name=f"TradeGuard_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md",
-                    mime="text/markdown"
-                )
+                else:  # PDF Report
+                    st.info("📚 PDF generation coming soon! For now, please use Markdown or HTML format.")
+
     
     with col2:
-        st.markdown("### 📊 Quick Stats")
+        st.markdown("### 📊 Report Contents")
+        
+        # Show what will be included
         st.json({
-            "Total Trades": len(st.session_state['trade_data']),
-            "Analysis Date": datetime.now().strftime("%Y-%m-%d"),
-            "Risk Categories": 4,
-            "AI Insights": "Generated",
-            "Report Ready": True
+            "Trades Analyzed": len(st.session_state['trade_data']),
+            "Risk Score": st.session_state.get('score_result', {}).get('score', 'N/A'),
+            "Risk Grade": st.session_state.get('score_result', {}).get('grade', 'N/A'),
+            "Risks Detected": st.session_state.get('score_result', {}).get('total_risks', 0),
+            "AI Insights": "Included" if st.session_state.get('ai_explanations') else "Not generated",
+            "Generation Time": datetime.now().strftime("%Y-%m-%d %H:%M")
         })
+        
+        st.divider()
+        
+        st.markdown("### 💡 Quick Tips")
+        st.info("""
+        1. **Share safely**: Reports contain trading data - share only with trusted parties
+        2. **Regular updates**: Generate reports monthly to track improvement
+        3. **Educational use**: Use reports to learn about risk management
+        4. **No advice**: Remember, reports are educational, not advisory
+        """)
 
 elif page == "⚙️ Settings":
     st.header("Settings & Configuration")

@@ -1,190 +1,124 @@
 # core/ai_explainer.py
+# core/ai_explainer.py
 import os
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 import json
 
-# LangChain imports
-from langchain.chat_models import ChatOpenAI
-from langchain.schema import HumanMessage, SystemMessage
-from langchain.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, SystemMessagePromptTemplate
-from langchain.output_parsers import StructuredOutputParser, ResponseSchema
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    SystemMessagePromptTemplate
+)
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
 
 # Local imports
-from .risk_rules import RiskRuleEngine
-from .risk_scorer import RiskScorer
+from core.risk_rules import RiskRuleEngine
+from core.risk_scorer import RiskScorer
+
 
 @dataclass
 class RiskExplanation:
-    """Data class for structured risk explanations"""
     risk_name: str
-    severity: str  # high, medium, low
+    severity: str
     explanation: str
     educational_context: str
     non_advice_suggestions: List[str]
     trader_psychology_insight: Optional[str] = None
 
+
+class AIRiskAIOutput(BaseModel):
+    risk_summary: str
+    key_strengths: List[str]
+    key_risks: List[str]
+    educational_insights: str
+    improvement_focus: str
+    deriv_context: str
+
+
 class AIRiskExplainer:
     """AI-powered explanation engine for trading risks"""
-    
+
     def __init__(self, openai_api_key: Optional[str] = None):
-        # Initialize OpenAI model
         self.api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-        
+
         if not self.api_key:
-            # Use a mock mode for demo
             self.mock_mode = True
-            print("⚠️ OpenAI API key not found. Running in demo mode with pre-generated explanations.")
+            print("⚠️ OpenAI API key not found. Running in demo mode.")
         else:
             self.mock_mode = False
             os.environ["OPENAI_API_KEY"] = self.api_key
-            
-            # Initialize GPT-4o (or fall back to GPT-3.5-turbo for speed)
             self.llm = ChatOpenAI(
-                model_name="gpt-4o-mini",  # Using mini for speed/cost, can upgrade to gpt-4o
+                model="gpt-4o-mini",
                 temperature=0.3,
                 max_tokens=1000
             )
-        
-        # Define output schema for structured responses
-        self.response_schemas = [
-            ResponseSchema(name="risk_summary", 
-                          description="Overall summary of the trader's risk profile in 2-3 sentences"),
-            ResponseSchema(name="key_strengths", 
-                          description="1-3 key strengths in their trading approach"),
-            ResponseSchema(name="key_risks", 
-                          description="1-3 most critical risks that need attention"),
-            ResponseSchema(name="educational_insights", 
-                          description="Educational insights about each detected risk"),
-            ResponseSchema(name="improvement_focus", 
-                          description="Non-advisory focus areas for improvement"),
-            ResponseSchema(name="deriv_context", 
-                          description="Brief mention of how this relates to responsible trading (1 sentence)")
-        ]
-        
-        self.output_parser = StructuredOutputParser.from_response_schemas(self.response_schemas)
-        
-        # Create prompt template
+
+        self.output_parser = PydanticOutputParser(
+            pydantic_object=AIRiskAIOutput
+        )
         self.format_instructions = self.output_parser.get_format_instructions()
-        
+
         self.system_prompt = SystemMessagePromptTemplate.from_template("""
-You are a risk education assistant for retail traders. Your purpose is to:
-1. EXPLAIN trading risks clearly and educationally
-2. NEVER give specific trading advice, predictions, or signals
-3. Focus on risk MANAGEMENT and trader EDUCATION
-4. Use simple, plain English that beginners can understand
-5. Reference general trading principles, not specific strategies
+        You are a risk education assistant for retail traders.
+        Explain risks clearly and educationally.
+        Never give trading advice, predictions, or signals.
+        """)
 
-IMPORTANT RULES:
-- DO NOT say "you should" or "you must"
-- DO NOT recommend specific trades or entry/exit points
-- DO NOT predict market movements
-- DO NOT suggest specific lot sizes or position sizes
-- DO reference general risk management principles
-- DO explain concepts educationally
-- DO use "consider", "some traders find", "it's generally recommended"
-
-You will receive:
-1. Trading metrics (statistics about the trader's history)
-2. Detected risks (rule-based risk detection results)
-3. Risk score and grade
-
-Your task is to explain these risks in an educational, non-advisory way.
-""")
-        
         self.human_prompt_template = HumanMessagePromptTemplate.from_template("""
-## TRADER ANALYSIS REQUEST
+        ### Trading Metrics:
+        {metrics_summary}
 
-### Trading Metrics:
-{metrics_summary}
+        ### Detected Risks:
+        {risk_summary}
 
-### Detected Risks:
-{risk_summary}
+        ### Risk Score:
+        Score: {risk_score}/100
+        Grade: {risk_grade}
+        Total Risks: {total_risks}
 
-### Risk Score:
-- Overall Score: {risk_score}/100
-- Grade: {risk_grade}
-- Total Risks Detected: {total_risks}
+        {format_instructions}
+        """)
 
-### Additional Context:
-- Platform: Deriv (multi-asset trading platform)
-- Trader Type: Retail trader
-- Purpose: Educational risk awareness only
+    def generate_explanation(
+        self,
+        metrics: Dict[str, Any],
+        risk_results: Dict[str, Any],
+        score_result: Dict[str, Any]
+    ) -> Dict[str, Any]:
 
-### YOUR TASK:
-Please analyze this trader's risk profile and provide educational insights.
-Focus on explaining WHY these risks matter and WHAT principles they relate to.
-Do NOT give specific trading advice.
-
-{format_instructions}
-""")
-    
-    def generate_explanation(self, 
-                           metrics: Dict[str, Any], 
-                           risk_results: Dict[str, Any],
-                           score_result: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Generate AI-powered explanation of trading risks
-        
-        Args:
-            metrics: Trading metrics from TradeMetricsCalculator
-            risk_results: Risk detection results from RiskRuleEngine
-            score_result: Risk scoring results from RiskScorer
-            
-        Returns:
-            Dictionary with AI explanations and insights
-        """
-        
         if self.mock_mode:
             return self._generate_mock_explanation(metrics, risk_results, score_result)
-        
-        try:
-            # Prepare input data
-            metrics_summary = self._format_metrics_for_ai(metrics)
-            risk_summary = self._format_risks_for_ai(risk_results)
-            
-            # Create prompt
-            prompt = ChatPromptTemplate.from_messages([
-                self.system_prompt,
-                self.human_prompt_template
-            ])
-            
-            messages = prompt.format_prompt(
-                metrics_summary=metrics_summary,
-                risk_summary=risk_summary,
-                risk_score=score_result['score'],
-                risk_grade=score_result['grade'],
-                total_risks=score_result['total_risks'],
-                format_instructions=self.format_instructions
-            ).to_messages()
-            
-            # Get AI response
-            response = self.llm(messages)
-            
-            # Parse structured response
-            try:
-                parsed_response = self.output_parser.parse(response.content)
-            except:
-                # Fallback to simple parsing if structured parsing fails
-                parsed_response = self._parse_fallback_response(response.content)
-            
-            # Generate risk-specific explanations
-            risk_explanations = self._generate_risk_specific_explanations(
-                risk_results, metrics
-            )
-            
-            return {
-                **parsed_response,
-                'risk_explanations': risk_explanations,
-                'full_response': response.content,
-                'ai_model': 'gpt-4o-mini',
-                'timestamp': self._get_timestamp()
-            }
-            
-        except Exception as e:
-            print(f"Error generating AI explanation: {e}")
-            # Fall back to mock explanation
-            return self._generate_mock_explanation(metrics, risk_results, score_result)
+
+        prompt = ChatPromptTemplate.from_messages([
+            self.system_prompt,
+            self.human_prompt_template
+        ])
+
+        messages = prompt.format_prompt(
+            metrics_summary=self._format_metrics_for_ai(metrics),
+            risk_summary=self._format_risks_for_ai(risk_results),
+            risk_score=score_result["score"],
+            risk_grade=score_result["grade"],
+            total_risks=score_result["total_risks"],
+            format_instructions=self.format_instructions
+        ).to_messages()
+
+        response = self.llm.invoke(messages)
+
+        parsed = self.output_parser.parse(response.content)
+        parsed = parsed.model_dump()
+
+        parsed["ai_model"] = "gpt-4o-mini"
+        parsed["timestamp"] = self._get_timestamp()
+
+        return parsed
+
+    # --- helper methods unchanged ---
+
     
     def _generate_risk_specific_explanations(self, 
                                            risk_results: Dict[str, Any],
