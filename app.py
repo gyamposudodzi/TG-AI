@@ -11,6 +11,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'core'))
 from metrics_calculator import TradeMetricsCalculator
 from risk_scorer import RiskScorer
 from risk_rules import RiskRuleEngine
+from ai_explainer import AIRiskExplainer
 
 # Set page config
 st.set_page_config(
@@ -188,6 +189,15 @@ elif page == "📈 Risk Dashboard":
         st.session_state['risk_results'] = risk_results
         st.session_state['score_result'] = score_result
     
+    with st.spinner("🤖 Generating AI insights..."):
+        ai_explainer = AIRiskExplainer()
+        ai_explanations = ai_explainer.generate_explanation(
+            metrics, 
+            risk_results, 
+            score_result
+        )
+        st.session_state['ai_explanations'] = ai_explanations
+
     # Display Score Gauge
     col1, col2 = st.columns([2, 1])
     
@@ -313,7 +323,7 @@ elif page == "📈 Risk Dashboard":
     # Display Detailed Analysis
     st.subheader("📋 Detailed Analysis")
     
-    tab1, tab2, tab3 = st.tabs(["Score Breakdown", "Risk Summary", "Recommendations"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Score Breakdown", "Risk Summary", "AI Insights", "Recommendations"])
     
     with tab1:
         st.write("**Score Calculation Breakdown:**")
@@ -348,8 +358,50 @@ elif page == "📈 Risk Dashboard":
             ])
             fig.update_layout(title="Risk Distribution by Severity")
             st.plotly_chart(fig, use_container_width=True)
-    
+            
     with tab3:
+        st.subheader("🤖 AI-Powered Risk Analysis")
+        
+        # Check if we're in demo mode
+        if ai_explanations.get('ai_model') == 'demo_mode':
+            st.warning("""
+            ⚠️ **Demo Mode**: Using pre-generated explanations. 
+            For AI-powered insights, add your OpenAI API key in Settings.
+            """)
+        
+        # Display main AI analysis
+        st.markdown(ai_explainer.format_for_display(ai_explanations))
+        
+        # Display risk-specific AI explanations
+        st.divider()
+        st.subheader("🎯 Risk-Specific AI Explanations")
+        
+        for risk_exp in ai_explanations.get('risk_explanations', []):
+            with st.expander(f"{risk_exp.get('display_name', 'Unknown')} ({risk_exp.get('severity', 'N/A')} Risk)"):
+                col_a, col_b = st.columns(2)
+                
+                with col_a:
+                    st.markdown("**🎓 Educational Concept**")
+                    st.info(risk_exp.get('concept', ''))
+                    
+                    st.markdown("**⚡ Why This Matters**")
+                    st.info(risk_exp.get('why_matters', ''))
+                    
+                    st.markdown("**📚 Trading Principle**")
+                    st.info(risk_exp.get('principle', ''))
+                
+                with col_b:
+                    st.markdown("**🧠 Psychology Insight**")
+                    st.info(risk_exp.get('psychology_insight', ''))
+                    
+                    st.markdown("**💡 Analogy**")
+                    st.info(risk_exp.get('analogy', ''))
+                    
+                    st.markdown("**🔍 Non-Advisory Considerations**")
+                    for suggestion in risk_exp.get('non_advice_suggestions', []):
+                        st.write(f"• {suggestion}")
+
+    with tab4:
         st.write("**Recommendations:**")
         st.info(score_result['recommendation'])
         
@@ -384,6 +436,13 @@ elif page == "📋 Report":
     if 'trade_data' not in st.session_state:
         st.warning("Please upload trade data first to generate a report.")
         st.stop()
+        
+    if 'score_result' not in st.session_state:
+        st.warning("Please analyze your trades first from the Risk Dashboard.")
+        if st.button("Go to Dashboard"):
+            st.switch_page("📈 Risk Dashboard")
+        st.stop()
+
     
     col1, col2 = st.columns([2, 1])
     
@@ -392,15 +451,21 @@ elif page == "📋 Report":
         
         report_type = st.selectbox(
             "Report Format",
-            ["PDF Report", "HTML Report", "Markdown Report"]
+            ["Markdown Report", "HTML Report", "PDF Report(Coming Soon)"]
         )
         
         include_sections = st.multiselect(
             "Include Sections",
-            ["Executive Summary", "Risk Score", "Detailed Metrics", 
-             "AI Insights", "Improvement Plan", "Charts & Graphs"],
-            default=["Executive Summary", "Risk Score", "AI Insights", "Improvement Plan"]
+            ["Executive Summary", "Trading Metrics", "Risk Analysis", 
+             "AI Insights", "Action Plan", "Disclaimers"],
+            default=["Executive Summary", "Trading Metrics", "Risk Analysis", "AI Insights", "Action Plan"]
         )
+        
+        report_name = st.text_input(
+            "Report Name",
+            value=f"TradeGuard_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+
         
         st.divider()
         
@@ -454,19 +519,44 @@ elif page == "⚙️ Settings":
     
     st.subheader("AI Configuration")
     
-    api_key = st.text_input(
-        "OpenAI API Key (Optional)",
-        type="password",
-        help="Leave blank to use demo mode with pre-generated insights"
-    )
+     # Create two columns for API key input
+    col1, col2 = st.columns([3, 1])
     
-    if api_key:
-        st.session_state['openai_key'] = api_key
-        st.success("API key saved for this session")
+    with col1:
+        api_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="Enter your OpenAI API key for AI-powered insights. Get one at platform.openai.com",
+            value=st.session_state.get('openai_api_key', '')
+        )
+    
+    with col2:
+        st.markdown("###")
+        if st.button("💾 Save Key", use_container_width=True):
+            if api_key:
+                st.session_state['openai_api_key'] = api_key
+                st.success("API key saved for this session!")
+                st.rerun()
+            else:
+                st.warning("Please enter an API key")
+    
+    # Test the API key
+    if st.session_state.get('openai_api_key'):
+        if st.button("🧪 Test API Connection", type="secondary"):
+            with st.spinner("Testing connection to OpenAI..."):
+                try:
+                    test_explainer = AIRiskExplainer(
+                        openai_api_key=st.session_state['openai_api_key']
+                    )
+                    # Simple test - try to create the model
+                    st.success("✅ API connection successful!")
+                except Exception as e:
+                    st.error(f"❌ Connection failed: {str(e)}")
     
     st.divider()
     
     st.subheader("Risk Parameters")
+
     
     col1, col2 = st.columns(2)
     
