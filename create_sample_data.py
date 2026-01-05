@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 def create_sample_data(num_trades=50, account_balance=10000):
-    """Create realistic sample trading data"""
+    """Create realistic sample trading data for testing"""
     
     symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'XAUUSD', 'TSLA', 'AAPL']
     
